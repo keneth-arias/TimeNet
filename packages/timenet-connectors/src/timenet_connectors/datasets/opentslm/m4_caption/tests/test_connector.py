@@ -19,8 +19,8 @@ from timenet_connectors.datasets.opentslm.m4_caption.connector import (
     SPLITS_PATH,
     M4CaptionConnector,
     M4CaptionRelease,
-    M4CaptionSplits,
 )
+from timenet_connectors.splitting import FrozenSplits
 
 
 _SERIES_IDS = {
@@ -119,9 +119,9 @@ def test_each_series_becomes_a_record_and_a_caption_task(tmp_path):
 @pytest.mark.parametrize(
     ("changes", "message"),
     [
-        ({"source_sha256": "0" * 64}, "the split was made from the release 0+, not from the pinned"),
-        ({"test": ["M3", "W1"]}, r"series \['W1'\] are named more than once"),
-        ({"test": ["M3", "M9"]}, r"names series \['M9'\] that the release does not have"),
+        ({"source_sha256": "0" * 64}, "the split was made from the source 0+, not from the pinned"),
+        ({"test": ["M3", "W1"]}, r"\['W1'\] are named more than once"),
+        ({"test": ["M3", "M9"]}, r"the split names \['M9'\] that the source does not have"),
     ],
     ids=["another release", "a series in two splits", "a series that the release does not have"],
 )
@@ -131,7 +131,7 @@ def test_a_split_file_that_does_not_fit_the_release_raises(tmp_path, changes, me
 
 
 def test_the_frozen_split_is_of_the_pinned_release_and_has_the_paper_counts():
-    splits = M4CaptionSplits.read_from_file(SPLITS_PATH)
+    splits = FrozenSplits[str].read_from_file(SPLITS_PATH)
     assert splits.source_sha256 == M4_CAPTION_SHA256
     # The 80/10/10 split of 100,000 series that the OpenTSLM paper reports.
     assert (len(splits.validation), len(splits.test)) == (10_000, 10_000)

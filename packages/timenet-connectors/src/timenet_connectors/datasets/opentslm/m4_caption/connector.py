@@ -6,17 +6,15 @@ target is the caption. The release has no split, so the connector reads the spli
 loader from splits.json.xz, which generate_splits.py wrote.
 """
 
-from collections import Counter
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator
 from dataclasses import dataclass
 from enum import StrEnum
-import lzma
 from pathlib import Path
 import re
-from typing import Annotated, Self
+from typing import Annotated
 
 import numpy as np
-from pydantic import AllowInfNan, BaseModel, ConfigDict, Field, Json, StrictFloat, ValidationError, model_validator
+from pydantic import AllowInfNan, Field, Json, StrictFloat
 
 from timenet.connectors import BaseConnector
 from timenet.dataset import Record, Signal, Source, TimeFDataset
@@ -25,6 +23,7 @@ from timenet.errors import TimeNetConnectorError
 from timenet.types import Annotation, AnswerTask, Split, TimeSeriesSpec
 from timenet_connectors.download import ensure_archive
 from timenet_connectors.sources.readers import CsvDataReader, DataRow
+from timenet_connectors.splitting import FrozenSplits
 
 
 M4_CAPTION_URL = "https://polybox.ethz.ch/index.php/s/MT3y9WdEebT8wfj/download/M4TimeSeriesCaptionDatasetV02.zip"
@@ -149,68 +148,6 @@ class M4CaptionSeries:
         return record, task
 
 
-class M4CaptionSplits(BaseModel):
-    """The validation and test series of OpenTSLM's split, by M4 id.
-
-    The release has no split. generate_splits.py ran the calls of OpenTSLM's loader once and wrote this
-    split to splits.json.xz. Every series that the file does not name is in the train split.
-    """
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    source_sha256: str
-    """SHA-256 digest of the release archive that the split was made from."""
-    validation: tuple[str, ...]
-    test: tuple[str, ...]
-
-    @model_validator(mode="after")
-    def _each_series_in_one_split(self) -> Self:
-        repeated = sorted(m4_id for m4_id, count in Counter(self.m4_ids).items() if count > 1)
-        if repeated:
-            raise ValueError(f"series {repeated} are named more than once")
-        return self
-
-    @property
-    def m4_ids(self) -> tuple[str, ...]:
-        """The validation and test series together."""
-        return (*self.validation, *self.test)
-
-    @classmethod
-    def read_from_file(cls, path: Path) -> Self:
-        """Read the split from an xz-compressed JSON file.
-
-        Returns:
-            The split.
-
-        Raises:
-            TimeNetConnectorError: If the file does not hold a valid split.
-        """
-        try:
-            return cls.model_validate_json(lzma.decompress(path.read_bytes()))
-        except (lzma.LZMAError, ValidationError) as exc:
-            raise TimeNetConnectorError(f"{path.name} does not hold a valid split: {exc}") from exc
-
-    def assign_split_to_each_series(self, m4_ids: Sequence[str]) -> list[Split]:
-        """Assign a split to each series of the pinned release.
-
-        Returns:
-            The split of each series, in the order of ``m4_ids``.
-
-        Raises:
-            TimeNetConnectorError: If the split was made from another release, or names a series that
-                the release does not have.
-        """
-        if self.source_sha256 != M4_CAPTION_SHA256:
-            raise TimeNetConnectorError(
-                f"the split was made from the release {self.source_sha256}, not from the pinned {M4_CAPTION_SHA256}"
-            )
-        unknown = sorted(set(self.m4_ids) - set(m4_ids))
-        if unknown:
-            raise TimeNetConnectorError(f"the split names series {unknown} that the release does not have")
-        split_of = dict.fromkeys(self.validation, Split.VALIDATION) | dict.fromkeys(self.test, Split.TEST)
-        return [split_of.get(m4_id, Split.TRAIN) for m4_id in m4_ids]
-
-
 @dataclass(frozen=True)
 class M4CaptionRelease:
     """The extracted release and the file that holds the split of its series."""
@@ -230,7 +167,8 @@ class M4CaptionRelease:
         """
         captioned = [(frequency, series) for frequency in M4Frequency for series in self._read_frequency(frequency)]
         m4_ids = [series.m4_id for _, series in captioned]
-        splits = M4CaptionSplits.read_from_file(self.splits_path).assign_split_to_each_series(m4_ids)
+        frozen = FrozenSplits[str].read_from_file(self.splits_path)
+        splits = frozen.assign_splits(m4_ids, source_sha256=M4_CAPTION_SHA256)
         return [
             M4CaptionSeries(
                 m4_id=series.m4_id,

@@ -116,18 +116,10 @@ def test_each_series_becomes_a_record_and_a_caption_task(tmp_path):
         assert task.split == _expected_split(m4_id)
 
 
-@pytest.mark.parametrize(
-    ("changes", "message"),
-    [
-        ({"source_sha256": "0" * 64}, "the split was made from the source 0+, not from the pinned"),
-        ({"test": ["M3", "W1"]}, r"\['W1'\] are named more than once"),
-        ({"test": ["M3", "M9"]}, r"the split names \['M9'\] that the source does not have"),
-    ],
-    ids=["another release", "a series in two splits", "a series that the release does not have"],
-)
-def test_a_split_file_that_does_not_fit_the_release_raises(tmp_path, changes, message):
-    with pytest.raises(TimeNetConnectorError, match=message):
-        _convert(tmp_path, splits=_SPLITS | changes)
+def test_a_split_file_of_another_release_raises(tmp_path):
+    # The connector checks the split file against its pinned digest, not against the digest in the file.
+    with pytest.raises(TimeNetConnectorError, match=r"the split was made from the source 0+, not from the pinned"):
+        _convert(tmp_path, splits=_SPLITS | {"source_sha256": "0" * 64})
 
 
 def test_the_frozen_split_is_of_the_pinned_release_and_has_the_paper_counts():

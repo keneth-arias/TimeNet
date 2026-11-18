@@ -23,7 +23,7 @@ from timenet.errors import TimeNetConnectorError
 from timenet.types import Annotation, AnswerTask, Split, TimeSeriesSpec
 from timenet_connectors.download import ensure_archive
 from timenet_connectors.sources.readers import CsvDataReader, DataRow
-from timenet_connectors.splitting import FrozenSplits
+from timenet_connectors.splitting import PrecomputedSplits
 
 
 M4_CAPTION_URL = "https://polybox.ethz.ch/index.php/s/MT3y9WdEebT8wfj/download/M4TimeSeriesCaptionDatasetV02.zip"
@@ -167,8 +167,8 @@ class M4CaptionRelease:
         """
         captioned = [(frequency, series) for frequency in M4Frequency for series in self._read_frequency(frequency)]
         m4_ids = [series.m4_id for _, series in captioned]
-        frozen = FrozenSplits[str].read_from_file(self.splits_path)
-        splits = frozen.assign_splits(m4_ids, source_sha256=M4_CAPTION_SHA256)
+        precomputed = PrecomputedSplits[str].read_from_file(self.splits_path)
+        splits = precomputed.assign_splits(m4_ids, source_sha256=M4_CAPTION_SHA256)
         return [
             M4CaptionSeries(
                 m4_id=series.m4_id,
@@ -223,7 +223,7 @@ class M4CaptionConnector(BaseConnector[M4CaptionRelease]):
             cache_dir: The directory that holds the extracted files.
 
         Returns:
-            The extracted release, with the frozen split of the connector.
+            The extracted release, with the precomputed split of the connector.
         """
         root = await ensure_archive(M4_CAPTION_URL, cache_dir, filename="m4_caption.zip", sha256=M4_CAPTION_SHA256)
         return [M4CaptionRelease(directory=root / RELEASE_FOLDER, splits_path=SPLITS_PATH)]

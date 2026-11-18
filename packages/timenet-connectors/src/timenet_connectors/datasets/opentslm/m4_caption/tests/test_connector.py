@@ -20,7 +20,7 @@ from timenet_connectors.datasets.opentslm.m4_caption.connector import (
     M4CaptionConnector,
     M4CaptionRelease,
 )
-from timenet_connectors.splitting import FrozenSplits
+from timenet_connectors.splitting import PrecomputedSplits
 
 
 _SERIES_IDS = {
@@ -122,8 +122,8 @@ def test_a_split_file_of_another_release_raises(tmp_path):
         _convert(tmp_path, splits=_SPLITS | {"source_sha256": "0" * 64})
 
 
-def test_the_frozen_split_is_of_the_pinned_release_and_has_the_paper_counts():
-    splits = FrozenSplits[str].read_from_file(SPLITS_PATH)
+def test_the_precomputed_split_is_of_the_pinned_release_and_has_the_paper_counts():
+    splits = PrecomputedSplits[str].read_from_file(SPLITS_PATH)
     assert splits.source_sha256 == M4_CAPTION_SHA256
     # The 80/10/10 split of 100,000 series that the OpenTSLM paper reports.
     assert (len(splits.validation), len(splits.test)) == (10_000, 10_000)

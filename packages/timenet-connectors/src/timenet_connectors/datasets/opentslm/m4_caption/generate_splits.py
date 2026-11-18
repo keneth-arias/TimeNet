@@ -7,7 +7,7 @@
 #     "pandas==2.3.3",
 # ]
 # ///
-"""Write splits.json.xz, the frozen train, validation and test split of m4-caption.
+"""Write splits.json.xz, the precomputed train, validation and test split of m4-caption.
 
 The release does not store the split. OpenTSLM's loader makes it at load time with the datasets library
 and a fixed seed, so the split depends on the versions of datasets and NumPy. Instead of pinning these

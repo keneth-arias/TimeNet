@@ -46,10 +46,12 @@ def _key(fields: list[str | None], prefix: str = "") -> str:
     return sha256((prefix + json.dumps(fields, ensure_ascii=False, separators=(",", ":"))).encode("utf-8")).hexdigest()
 
 
-def _parse(data: bytes) -> dict[str, dict[datetime, type_reading | None]]:
+def _parse(
+    data: bytes, field: str = "PM2_5", *, reject_nonfinite: bool = False
+) -> dict[str, dict[datetime, type_reading | None]]:
     """Preserve the first equal report and leave disagreeing reports ambiguous."""
     stations: dict[str, dict[datetime, type_reading | None]] = defaultdict(dict)
-    required = {*STATION_FIELDS, "FECHA", "HORA", "PM2_5"}
+    required = {*STATION_FIELDS, "FECHA", "HORA", field}
     with io.TextIOWrapper(io.BytesIO(data), encoding="utf-8-sig", newline="") as stream:
         rows = csv.DictReader(stream, strict=True)
         if rows.fieldnames is None or not required.issubset(rows.fieldnames):
@@ -60,10 +62,10 @@ def _parse(data: bytes) -> dict[str, dict[datetime, type_reading | None]]:
             if row["DEPARTAMENTO"] != "LIMA" or row["PROVINCIA"] != "LIMA" or not row["ESTACION"].strip():
                 continue
             try:
-                value = float(row["PM2_5"])
+                value = float(row[field])
             except ValueError:
                 continue
-            if not math.isfinite(value):
+            if not math.isfinite(value) and not reject_nonfinite:
                 continue
             clock = datetime.strptime(row["FECHA"] + row["HORA"].zfill(6), "%Y%m%d%H%M%S").replace(tzinfo=UTC)
             if clock.minute or clock.second:
@@ -72,7 +74,9 @@ def _parse(data: bytes) -> dict[str, dict[datetime, type_reading | None]]:
             if context not in keys:
                 keys[context] = _key(list(context), "senamhi-lima-csv")
             series = stations[keys[context]]
-            if clock not in series:
+            if not math.isfinite(value):
+                series[clock] = None
+            elif clock not in series:
                 series[clock] = (value, row_number)
             elif (previous := series[clock]) is not None and previous[0] != value:
                 series[clock] = None
